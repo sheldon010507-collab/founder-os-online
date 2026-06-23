@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+﻿import { createClient } from '@supabase/supabase-js';
 import {
   Brain,
   ChevronDown,
@@ -142,7 +142,9 @@ export default function App() {
         createdAt: row.created_at,
       })));
     }
-    setConnectionNote(m.error ? `核心数据已连接；Capture 表还没初始化：${m.error.message}` : '已连接 Supabase，正在读取正式数据。');
+    const projectRef = new URL(supabaseUrl).hostname.split('.')[0];
+    const dataSummary = `Supabase：${projectRef}｜账目 ${(f.data || []).length}｜任务 ${(w.data || []).length}｜动态 ${(a.data || []).length}`;
+    setConnectionNote(m.error ? `${dataSummary}｜Capture 表未初始化：${m.error.message}` : dataSummary);
   }
 
   function unlock(event: FormEvent) {
