@@ -135,6 +135,13 @@ select:focus, input:focus, textarea:focus { border-color: #b6a5e7; box-shadow: 0
 .candidate-card.approved { border-color: #9ac9ab; background: #f4fbf6; }
 .candidate-card.pending { border-color: #d7c8f7; background: #fbf9ff; }
 .candidate-card.rejected { opacity: .58; }
+.wiki-browser, .wiki-editor { display: grid; gap: 12px; }
+.wiki-note-list { display: grid; gap: 8px; }
+.wiki-note-card { display: grid; gap: 4px; width: 100%; border: 1px solid var(--border-soft); border-radius: 7px; background: #fbfaf8; color: var(--text); padding: 10px 11px; text-align: left; }
+.wiki-note-card.active, .wiki-note-card:hover { border-color: #cfc7df; background: #fff; }
+.wiki-note-card span, .wiki-actor { color: var(--muted); font-size: 12px; }
+.wiki-editor label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
+.wiki-editor textarea { min-height: 320px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
 
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

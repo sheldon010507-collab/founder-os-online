@@ -52,6 +52,7 @@ type Work = {
 
 type Activity = { id: string; actor: Person; actionType: string; summary: string; createdAt: string };
 type Candidate = { id: string; title: string; ruleText: string; status: 'pending' | 'approved' | 'rejected'; evidenceCount: number; createdAt: string };
+type WikiNote = { id: string; title: string; category: string; body: string; tags: string[]; createdBy: Person; updatedBy?: Person; createdAt: string; updatedAt: string };
 type CaptureMessage = {
   id: string;
   actor: Person;
@@ -104,6 +105,7 @@ export default function App() {
   const [work, setWork] = useState<Work[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [wikiNotes, setWikiNotes] = useState<WikiNote[]>([]);
   const [messages, setMessages] = useState<CaptureMessage[]>([]);
   const [connectionNote, setConnectionNote] = useState(hasSupabase ? '正在连接 Supabase...' : '未配置 Supabase：不会显示演示数据，请在 Vercel 配置正确的 Supabase 环境变量。');
   const active = nav.find(item => item.view === view) || nav[0];
@@ -119,12 +121,13 @@ export default function App() {
 
   async function refreshData() {
     if (!supabase) return;
-    const [f, w, a, c, m] = await Promise.all([
+    const [f, w, a, c, m, wiki] = await Promise.all([
       supabase.from('finance_entries').select('*').order('entry_date', { ascending: false }).limit(100),
       supabase.from('work_items').select('*').order('sort_order', { ascending: true }).limit(240),
       supabase.from('activity_log').select('*').order('created_at', { ascending: false }).limit(100),
       supabase.from('founder_skill_candidates').select('*').order('created_at', { ascending: false }).limit(100),
       supabase.from('founder_capture_messages').select('*').order('created_at', { ascending: false }).limit(40),
+      supabase.from('founder_wiki_notes').select('*').order('updated_at', { ascending: false }).limit(100),
     ]);
     const coreError = f.error || w.error || a.error || c.error;
     if (coreError) throw coreError;
@@ -132,6 +135,9 @@ export default function App() {
     setWork((w.data || []).map(row => ({ id: row.id, itemType: row.item_type, title: row.title, parentId: row.parent_id || undefined, priority: row.priority, status: row.status, tags: row.tags || [], sortOrder: row.sort_order || 0, createdBy: row.created_by, createdAt: row.created_at })));
     setActivities((a.data || []).map(row => ({ id: row.id, actor: row.actor, actionType: row.action_type, summary: row.summary, createdAt: row.created_at })));
     setCandidates((c.data || []).map(row => ({ id: row.id, title: row.title, ruleText: row.rule_text, status: row.status, evidenceCount: row.evidence_count, createdAt: row.created_at })));
+    if (!wiki.error) {
+      setWikiNotes((wiki.data || []).map(row => ({ id: row.id, title: row.title, category: row.category, body: row.body, tags: row.tags || [], createdBy: row.created_by, updatedBy: row.updated_by || undefined, createdAt: row.created_at, updatedAt: row.updated_at })));
+    }
     if (!m.error) {
       setMessages((m.data || []).reverse().map(row => ({
         id: row.id,
@@ -144,7 +150,34 @@ export default function App() {
     }
     const projectRef = new URL(supabaseUrl).hostname.split('.')[0];
     const dataSummary = `Supabase：${projectRef}｜账目 ${(f.data || []).length}｜任务 ${(w.data || []).length}｜动态 ${(a.data || []).length}`;
-    setConnectionNote(m.error ? `${dataSummary}｜Capture 表未初始化：${m.error.message}` : dataSummary);
+    const optionalErrors = [
+      m.error ? `Capture 表未初始化：${m.error.message}` : '',
+      wiki.error ? `Wiki 表未初始化：${wiki.error.message}` : '',
+    ].filter(Boolean);
+    setConnectionNote(optionalErrors.length ? `${dataSummary}｜${optionalErrors.join('｜')}` : dataSummary);
+  }
+
+  async function saveWikiNote(note: Partial<WikiNote> & { title: string; body: string; category: string }) {
+    if (!supabase) return;
+    if (note.id) {
+      const { error } = await supabase
+        .from('founder_wiki_notes')
+        .update({ title: note.title, category: note.category, body: note.body, tags: note.tags || [], updated_by: actor, updated_at: new Date().toISOString() })
+        .eq('id', note.id);
+      if (error) {
+        setConnectionNote(`Wiki 保存失败：${error.message}`);
+        return;
+      }
+    } else {
+      const { error } = await supabase
+        .from('founder_wiki_notes')
+        .insert({ title: note.title, category: note.category, body: note.body, tags: note.tags || [], created_by: actor, updated_by: actor });
+      if (error) {
+        setConnectionNote(`Wiki 新建失败：${error.message}`);
+        return;
+      }
+    }
+    await refreshData();
   }
 
   function unlock(event: FormEvent) {
@@ -280,7 +313,7 @@ export default function App() {
 
         {view === 'capture' && <CaptureHome actor={actor} messages={messages} onSubmit={handleCapture} />}
         {view === 'board' && <Board finance={finance} work={work} activities={activities} onSaveWorkItem={saveWorkItem} onMoveWorkItem={moveWorkItem} />}
-        {view === 'learning' && <Learning candidates={candidates} connectionNote={connectionNote} />}
+        {view === 'learning' && <Learning actor={actor} notes={wikiNotes} candidates={candidates} connectionNote={connectionNote} onSaveNote={saveWikiNote} />}
         {view === 'settings' && <SettingsPage connectionNote={connectionNote} onLock={() => { localStorage.removeItem('founder-app-passcode'); setUnlocked(false); setAppPassword(''); }} />}
       </main>
     </div>
@@ -566,17 +599,35 @@ function FinanceRow({ entry }: { entry: Finance }) {
   return <div className="finance-row"><div><strong>{sign}£{entry.amount}</strong><span>{entry.note || categoryLabel[entry.category]}</span></div><small>{categoryLabel[entry.category]} · {entry.entryDate}</small></div>;
 }
 
-function Learning({ candidates, connectionNote }: { candidates: Candidate[]; connectionNote: string }) {
+function Learning({ actor, notes, candidates, connectionNote, onSaveNote }: { actor: Person; notes: WikiNote[]; candidates: Candidate[]; connectionNote: string; onSaveNote: (note: Partial<WikiNote> & { title: string; body: string; category: string }) => Promise<void> }) {
+  const [query, setQuery] = useState('');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = selectedId ? notes.find(note => note.id === selectedId) : undefined;
+  const filtered = notes.filter(note => {
+    const haystack = `${note.title} ${note.category} ${note.body} ${note.tags.join(' ')}`.toLowerCase();
+    return haystack.includes(query.toLowerCase());
+  });
+
   return (
     <section className="learning-page">
-      <Panel title="Wiki 现在怎么用">
-        <p className="empty">线上版不能直接写你电脑里的 Obsidian vault。现在的 Wiki 会改成 Supabase 在线知识库：手机、电脑、Vercel 都读同一份 Markdown 资料；Obsidian 只作为本机备份或后续同步目标。</p>
-        <div className="hint-list">
-          <span>适合进 Wiki：SOP、客户背景、长期规则、复盘、链接资料、文件/图片摘要。</span>
-          <span>适合进正式表：账目、任务、状态、动态、进度，这些用于统计和看板。</span>
-          <span>下一步建议：新增 `founder_wiki_notes` 表，让 Wiki 页面可以直接新建、编辑、搜索 Markdown。</span>
+      <section className="panel wiki-browser">
+        <div className="panel-title">
+          <h2>Online Wiki</h2>
+          <button className="secondary-button" type="button" onClick={() => setSelectedId(null)}>新建</button>
         </div>
-      </Panel>
+        <input value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索 SOP、客户、规则、复盘..." />
+        <p className="empty">这里是 Supabase 在线 Wiki。Obsidian 暂时只是本机备份，不再是线上主库。</p>
+        <div className="wiki-note-list">
+          {filtered.length === 0 && <p className="empty">还没有 Wiki 笔记。可以先建 SOP、客户背景、规则或周复盘。</p>}
+          {filtered.map(note => (
+            <button key={note.id} className={selectedId === note.id ? 'wiki-note-card active' : 'wiki-note-card'} type="button" onClick={() => setSelectedId(note.id)}>
+              <strong>{note.title}</strong>
+              <span>{note.category} · {actorName(note.updatedBy || note.createdBy)} · {new Date(note.updatedAt).toLocaleDateString()}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+      <WikiEditor key={selected?.id || 'new'} actor={actor} note={selected} onSave={onSaveNote} />
       <Panel title="候选 Skill">
         <p className="empty">这里不是预置技能列表。只有当你连续纠正同一类习惯 3 次后，才会出现“待批准”的候选 skill。</p>
         <div className="list">
@@ -585,6 +636,33 @@ function Learning({ candidates, connectionNote }: { candidates: Candidate[]; con
         </div>
       </Panel>
       <Panel title="连接状态"><p className="empty">{connectionNote}</p></Panel>
+    </section>
+  );
+}
+
+function WikiEditor({ actor, note, onSave }: { actor: Person; note?: WikiNote; onSave: (note: Partial<WikiNote> & { title: string; body: string; category: string }) => Promise<void> }) {
+  const [title, setTitle] = useState(note?.title || '');
+  const [category, setCategory] = useState(note?.category || 'general');
+  const [body, setBody] = useState(note?.body || '');
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (!title.trim() || saving) return;
+    setSaving(true);
+    await onSave({ id: note?.id, title: title.trim(), category: category.trim() || 'general', body, tags: note?.tags || [] });
+    setSaving(false);
+  }
+
+  return (
+    <section className="panel wiki-editor">
+      <div className="panel-title">
+        <h2>{note ? '编辑 Wiki' : '新建 Wiki'}</h2>
+        <span className="wiki-actor">{actorName(actor)}</span>
+      </div>
+      <label>标题<input value={title} onChange={event => setTitle(event.target.value)} placeholder="比如：Founder OS SOP" /></label>
+      <label>分类<select value={category} onChange={event => setCategory(event.target.value)}><option value="general">general</option><option value="sop">sop</option><option value="customer">customer</option><option value="rule">rule</option><option value="review">review</option><option value="research">research</option></select></label>
+      <label>Markdown<textarea value={body} onChange={event => setBody(event.target.value)} placeholder="# 标题&#10;&#10;写 SOP、客户背景、规则、复盘或资料摘要..." /></label>
+      <button className="save-button" type="button" onClick={save} disabled={!title.trim() || saving}>{saving ? <Loader2 className="spin" size={16} /> : <Save size={16} />}{saving ? '保存中' : '保存 Wiki'}</button>
     </section>
   );
 }
