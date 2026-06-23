@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Founder OS dog icon">
+  <rect width="512" height="512" rx="112" fill="#fffefa"/>
+  <path d="M70 247c21-74 101-126 209-128 76-1 125 23 151 59 19 27 22 61 14 98" fill="none" stroke="#17181d" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M429 206c-4 49-9 92-15 129-6 39-68 45-82 9-7-19-2-58 2-91" fill="none" stroke="#17181d" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M69 249c-8 31 21 66 66 78 47 12 99 5 145-14" fill="none" stroke="#17181d" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M80 226c-26 0-37 34-11 49 17 10 39-2 43-21 3-15-10-28-32-28Z" fill="#17181d"/>
+  <circle cx="206" cy="175" r="14" fill="#17181d"/>
+  <circle cx="301" cy="176" r="15" fill="#17181d"/>
+  <path d="M242 337c-20 28-30 64-31 106" fill="none" stroke="#17181d" stroke-width="22" stroke-linecap="round"/>
+</svg>
