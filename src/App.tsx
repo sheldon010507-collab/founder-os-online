@@ -91,27 +91,6 @@ const nav = [
   { view: 'settings' as const, label: 'Settings', icon: Settings },
 ];
 
-const financeSeed: Finance[] = [
-  { id: 'fin-1', type: 'income', amount: 200, category: 'client_payment', note: '收到客户预付', entryDate: '2026-06-02', createdBy: 'wendy', createdAt: '2026-06-02T09:00:00.000Z' },
-  { id: 'fin-2', type: 'expense', amount: 50, category: 'tools', note: '买域名', entryDate: '2026-06-03', createdBy: 'partner', createdAt: '2026-06-03T12:00:00.000Z' },
-];
-
-const workSeed: Work[] = [
-  seedWork('task-guka', 'Guka 第一阶段', 'doing', 1),
-  seedWork('task-step-7', 'Guka 第一阶段 step 7', 'done', 2, 'task-guka'),
-  seedWork('task-wallet', 'Guka Apple Wallet', 'doing', 3, 'task-guka'),
-  seedWork('task-video', 'Peaches 推广视频', 'todo', 4),
-];
-
-const activitySeed: Activity[] = [
-  { id: 'act-1', actor: 'wendy', actionType: 'work.status', summary: '更新任务状态：Guka step 7 -> done', createdAt: '2026-06-08T09:00:00.000Z' },
-  { id: 'act-2', actor: 'partner', actionType: 'finance.expense', summary: '记录域名支出 £50', createdAt: '2026-06-03T12:00:00.000Z' },
-];
-
-function seedWork(id: string, title: string, status: Status, sortOrder: number, parentId?: string): Work {
-  return { id, itemType: 'task', title, parentId, priority: 'medium', status, tags: [], sortOrder, createdBy: 'wendy', createdAt: '2026-06-01T10:00:00.000Z' };
-}
-
 export default function App() {
   const [view, setView] = useState<View>('capture');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -119,12 +98,12 @@ export default function App() {
   const [appPassword, setAppPassword] = useState(() => localStorage.getItem('founder-app-passcode') || '');
   const [passwordDraft, setPasswordDraft] = useState('');
   const [unlocked, setUnlocked] = useState(() => Boolean(localStorage.getItem('founder-app-passcode')));
-  const [finance, setFinance] = useState(financeSeed);
-  const [work, setWork] = useState(workSeed);
-  const [activities, setActivities] = useState(activitySeed);
+  const [finance, setFinance] = useState<Finance[]>([]);
+  const [work, setWork] = useState<Work[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [messages, setMessages] = useState<CaptureMessage[]>([]);
-  const [connectionNote, setConnectionNote] = useState(hasSupabase ? '正在连接 Supabase...' : '未配置 Supabase，当前展示演示数据。');
+  const [connectionNote, setConnectionNote] = useState(hasSupabase ? '正在连接 Supabase...' : '未配置 Supabase：不会显示演示数据，请在 Vercel 配置正确的 Supabase 环境变量。');
   const active = nav.find(item => item.view === view) || nav[0];
 
   useEffect(() => {
@@ -296,7 +275,7 @@ export default function App() {
         </header>
 
         {view === 'capture' && <CaptureHome actor={actor} messages={messages} onSubmit={handleCapture} />}
-        {view === 'board' && <Board finance={finance} work={work} activities={activities} onSaveWorkItem={saveWorkItem} onMoveWorkItem={moveWorkItem} />}
+        {view === 'board' && <Board finance={finance} work={work} activities={activities} connectionNote={connectionNote} onSaveWorkItem={saveWorkItem} onMoveWorkItem={moveWorkItem} />}
         {view === 'learning' && <Learning candidates={candidates} connectionNote={connectionNote} />}
         {view === 'settings' && <SettingsPage connectionNote={connectionNote} onLock={() => { localStorage.removeItem('founder-app-passcode'); setUnlocked(false); setAppPassword(''); }} />}
       </main>
@@ -405,7 +384,7 @@ function ChatBubble({ message }: { message: CaptureMessage }) {
   );
 }
 
-function Board({ finance, work, activities, onSaveWorkItem, onMoveWorkItem }: { finance: Finance[]; work: Work[]; activities: Activity[]; onSaveWorkItem: (item: Work) => Promise<void>; onMoveWorkItem: (draggedId: string, targetId: string, position: DropPosition) => Promise<void> }) {
+function Board({ finance, work, activities, connectionNote, onSaveWorkItem, onMoveWorkItem }: { finance: Finance[]; work: Work[]; activities: Activity[]; connectionNote: string; onSaveWorkItem: (item: Work) => Promise<void>; onMoveWorkItem: (draggedId: string, targetId: string, position: DropPosition) => Promise<void> }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
@@ -422,6 +401,10 @@ function Board({ finance, work, activities, onSaveWorkItem, onMoveWorkItem }: { 
 
   return (
     <div className="dashboard-layout">
+      <section className="connection-banner">
+        <strong>数据来源</strong>
+        <span>{connectionNote}</span>
+      </section>
       <section className="metric-row">
         <Metric label="本月收入" value={`£${income.toFixed(0)}`} tone="good" />
         <Metric label="本月支出" value={`£${expense.toFixed(0)}`} tone="warn" />
@@ -451,12 +434,14 @@ function Board({ finance, work, activities, onSaveWorkItem, onMoveWorkItem }: { 
       <section className="panel">
         <h2>最近账目</h2>
         <div className="list finance-list">
+          {finance.length === 0 && <p className="empty">还没有从 Supabase 读到正式账目。</p>}
           {finance.slice(0, 6).map(item => <FinanceRow key={item.id} entry={item} />)}
         </div>
       </section>
       <section className="panel">
         <h2>最近动态</h2>
         <div className="activity-feed compact">
+          {activities.length === 0 && <p className="empty">还没有从 Supabase 读到动态记录。</p>}
           {activities.slice(0, 6).map(item => <div key={item.id} className="activity-row"><strong>{actorName(item.actor)}</strong><span>{item.summary}</span><time>{new Date(item.createdAt).toLocaleDateString()}</time></div>)}
         </div>
       </section>

@@ -75,6 +75,8 @@ select:focus, input:focus, textarea:focus { border-color: #b6a5e7; box-shadow: 0
 .hint-list span { border: 1px solid var(--border-soft); border-radius: 7px; background: #fbfaf8; color: #4b4742; padding: 9px 10px; line-height: 1.45; }
 
 .dashboard-layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(320px, .8fr); gap: 14px; align-items: start; }
+.connection-banner { display: flex; grid-column: 1 / -1; align-items: center; gap: 10px; border: 1px solid var(--border-soft); border-radius: 8px; background: #fbfaf8; color: var(--muted); padding: 10px 12px; font-size: 13px; }
+.connection-banner strong { color: var(--text); }
 .metric-row { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .metric { padding: 16px 18px; }
 .metric span { display: block; color: var(--muted); font-size: 13px; margin-bottom: 10px; }
