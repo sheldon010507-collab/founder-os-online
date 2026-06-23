@@ -66,8 +66,10 @@ type Node = { item: Work; children: Node[]; progress: number; inferred?: boolean
 type DropPosition = 'before' | 'after' | 'child';
 type DropTarget = { id: string; position: DropPosition };
 
-const supabaseUrl = import.meta.env.VITE_FOUNDER_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_FOUNDER_SUPABASE_ANON_KEY;
+const fallbackFounderSupabaseUrl = 'https://rnjwqzmwmnueugizyvco.supabase.co';
+const fallbackFounderSupabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJuandxem13bW51ZXVnaXp5dmNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2ODY5MjAsImV4cCI6MjA5NjI2MjkyMH0.7e02nPcRmDoHirSvC8M8W5lGbeedxIry0DrLvYb2WKE';
+const supabaseUrl = import.meta.env.VITE_FOUNDER_SUPABASE_URL || fallbackFounderSupabaseUrl;
+const supabaseAnonKey = import.meta.env.VITE_FOUNDER_SUPABASE_ANON_KEY || fallbackFounderSupabaseAnonKey;
 const hasSupabase = Boolean(supabaseUrl && supabaseAnonKey);
 const supabase = hasSupabase ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
