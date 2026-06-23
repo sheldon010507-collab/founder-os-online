@@ -445,17 +445,25 @@ function ChatBubble({ message }: { message: CaptureMessage }) {
 function Board({ finance, work, activities, onSaveWorkItem, onMoveWorkItem, onSaveFinance, onDeleteFinance }: { finance: Finance[]; work: Work[]; activities: Activity[]; onSaveWorkItem: (item: Work) => Promise<void>; onMoveWorkItem: (draggedId: string, targetId: string, position: DropPosition) => Promise<void>; onSaveFinance: (entry: Finance) => Promise<void>; onDeleteFinance: (id: string) => Promise<void> }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedFinanceId, setSelectedFinanceId] = useState<string | null>(null);
+  const [showFinanceInsight, setShowFinanceInsight] = useState(false);
+  const [financeAdvice, setFinanceAdvice] = useState('');
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
+  const financeInsightRef = useRef<HTMLElement | null>(null);
   const income = finance.filter(item => item.type === 'income').reduce((sum, item) => sum + item.amount, 0);
   const expense = finance.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0);
   const tree = useMemo(() => buildTree(work), [work]);
   const activeTree = useMemo(() => tree.filter(node => node.progress < 100), [tree]);
   const completedTasks = useMemo(() => flattenCompletedNodes(tree), [tree]);
   const financeTrend = useMemo(() => buildFinanceTrend(finance), [finance]);
-  const financeAnalysis = useMemo(() => analyzeFinance(finance), [finance]);
   const selected = selectedId ? work.find(item => item.id === selectedId) : undefined;
   const selectedFinance = selectedFinanceId ? finance.find(item => item.id === selectedFinanceId) : undefined;
+
+  function runFinanceAiAnalysis() {
+    setFinanceAdvice(analyzeFinance(finance));
+    setShowFinanceInsight(true);
+    window.setTimeout(() => financeInsightRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  }
 
   async function handleMove(dragged: string, target: DropTarget) {
     setDraggedId(null);
@@ -495,23 +503,20 @@ function Board({ finance, work, activities, onSaveWorkItem, onMoveWorkItem, onSa
           ? <TaskEditor item={selected} onClose={() => setSelectedId(null)} onSave={onSaveWorkItem} />
           : <CompletedTasks tasks={completedTasks} onSelect={setSelectedId} />}
       </section>
-      <section className="panel finance-analysis">
-        <div className="panel-title"><h2>财务走势</h2><span className="mini-label">最近 6 个月</span></div>
-        <div className="trend-chart">
-          {financeTrend.map(month => (
-            <div className="trend-month" key={month.key}>
-              <div className="trend-bars">
-                <span className="income" style={{ height: `${month.incomeHeight}%` }} />
-                <span className="expense" style={{ height: `${month.expenseHeight}%` }} />
-              </div>
-              <small>{month.label}</small>
-            </div>
-          ))}
-        </div>
-        <p className="analysis-copy">{financeAnalysis}</p>
-      </section>
+      {showFinanceInsight && (
+        <section className="panel finance-analysis" ref={financeInsightRef}>
+          <div className="panel-title"><h2>AI 财务趋势</h2><span className="mini-label">最近 6 个月 · 每次点击重新分析</span></div>
+          <FinanceLineChart trend={financeTrend} />
+          <p className="analysis-copy">{financeAdvice || analyzeFinance(finance)}</p>
+        </section>
+      )}
       <section className="panel">
-        <h2>最近账目</h2>
+        <div className="panel-title">
+          <h2>最近账目</h2>
+          <button className="robot-button" type="button" onClick={runFinanceAiAnalysis} aria-label="AI 重新分析财务趋势">
+            <img src="/dog-icon-192.png" alt="" />
+          </button>
+        </div>
         <div className="list finance-list">
           {finance.length === 0 && <p className="empty">还没有从 Supabase 读到正式账目。</p>}
           {finance.slice(0, 6).map(item => <FinanceRow key={item.id} entry={item} selected={selectedFinanceId === item.id} onSelect={setSelectedFinanceId} />)}
@@ -699,6 +704,35 @@ function CompletedTasks({ tasks, onSelect }: { tasks: Work[]; onSelect: (id: str
         ))}
       </div>
     </section>
+  );
+}
+
+function FinanceLineChart({ trend }: { trend: ReturnType<typeof buildFinanceTrend> }) {
+  const width = 620;
+  const height = 210;
+  const pad = 28;
+  const max = Math.max(1, ...trend.flatMap(item => [item.income, item.expense, Math.abs(item.income - item.expense)]));
+  const xFor = (index: number) => pad + (index * (width - pad * 2)) / Math.max(trend.length - 1, 1);
+  const yFor = (value: number) => height - pad - (value / max) * (height - pad * 2);
+  const pathFor = (field: 'income' | 'expense') => trend.map((item, index) => `${index === 0 ? 'M' : 'L'} ${xFor(index)} ${yFor(item[field])}`).join(' ');
+
+  return (
+    <div className="line-chart-wrap">
+      <svg className="line-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="最近 6 个月收入和支出折线图">
+        <line x1={pad} y1={height - pad} x2={width - pad} y2={height - pad} />
+        <line x1={pad} y1={pad} x2={pad} y2={height - pad} />
+        <path className="line-income" d={pathFor('income')} />
+        <path className="line-expense" d={pathFor('expense')} />
+        {trend.map((item, index) => (
+          <g key={item.key}>
+            <circle className="dot-income" cx={xFor(index)} cy={yFor(item.income)} r="4" />
+            <circle className="dot-expense" cx={xFor(index)} cy={yFor(item.expense)} r="4" />
+            <text x={xFor(index)} y={height - 6} textAnchor="middle">{item.label}</text>
+          </g>
+        ))}
+      </svg>
+      <div className="chart-legend"><span className="income-key" />收入<span className="expense-key" />支出</div>
+    </div>
   );
 }
 
@@ -923,10 +957,14 @@ function analyzeFinance(finance: Finance[]) {
     byCategory.set(entry.category, (byCategory.get(entry.category) || 0) + entry.amount);
   }
   const top = Array.from(byCategory.entries()).sort((a, b) => b[1] - a[1])[0];
-  if (finance.length === 0) return '还没有足够数据做分析。';
-  if (!top) return `最近收入 £${income.toFixed(0)}，暂时没有支出记录。`;
+  const stamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (finance.length === 0) return `AI ${stamp}：还没有足够数据做分析。`;
+  if (!top) return `AI ${stamp}：最近收入 £${income.toFixed(0)}，暂时没有支出记录。建议继续保持轻量支出，并把客户付款及时记录。`;
   const net = income - expense;
-  return `最近重点支出在「${categoryLabel[top[0]]}」£${top[1].toFixed(0)}；收入 £${income.toFixed(0)}，支出 £${expense.toFixed(0)}，净现金流 £${net.toFixed(0)}。`;
+  const advice = net < 0
+    ? '建议下一个动作是补一条收入计划或客户回款任务，把现金流拉回正数。'
+    : '现金流目前为正，可以继续推进高优先级项目，但仍建议检查订阅类工具是否重复。';
+  return `AI ${stamp}：最近重点支出在「${categoryLabel[top[0]]}」£${top[1].toFixed(0)}；收入 £${income.toFixed(0)}，支出 £${expense.toFixed(0)}，净现金流 £${net.toFixed(0)}。${advice}`;
 }
 
 function getNote(item: Work) { return item.tags.find(tag => tag.startsWith('note:'))?.slice(5) || ''; }

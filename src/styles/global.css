@@ -149,6 +149,9 @@ select:focus, input:focus, textarea:focus { border-color: #b6a5e7; box-shadow: 0
 .completed-row:hover { border-color: #b8d2bf; background: #f6fbf7; }
 .completed-row small, .mini-label { color: var(--muted); font-size: 12px; }
 .finance-analysis { display: grid; gap: 12px; }
+.robot-button { display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid var(--border); border-radius: 10px; background: #fff; padding: 2px; }
+.robot-button:hover { border-color: #cfc7df; background: #fbf8ff; }
+.robot-button img { width: 28px; height: 28px; object-fit: cover; border-radius: 8px; }
 .trend-chart { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; min-height: 150px; align-items: end; }
 .trend-month { display: grid; gap: 6px; min-width: 0; text-align: center; }
 .trend-bars { display: flex; align-items: end; justify-content: center; gap: 4px; height: 118px; border: 1px solid var(--border-soft); border-radius: 7px; background: #fbfaf8; padding: 6px; }
@@ -156,6 +159,19 @@ select:focus, input:focus, textarea:focus { border-color: #b6a5e7; box-shadow: 0
 .trend-bars .income { background: var(--green); }
 .trend-bars .expense { background: var(--orange); }
 .analysis-copy { margin: 0; color: #4b4742; line-height: 1.55; }
+.line-chart-wrap { display: grid; gap: 8px; }
+.line-chart { width: 100%; min-height: 220px; border: 1px solid var(--border-soft); border-radius: 8px; background: #fbfaf8; }
+.line-chart line { stroke: #d8d1c8; stroke-width: 1; }
+.line-chart path { fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.line-income { stroke: var(--green); }
+.line-expense { stroke: var(--orange); }
+.dot-income { fill: var(--green); }
+.dot-expense { fill: var(--orange); }
+.line-chart text { fill: var(--muted); font-size: 12px; }
+.chart-legend { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+.chart-legend span { width: 18px; height: 3px; border-radius: 999px; }
+.income-key { background: var(--green); }
+.expense-key { background: var(--orange); }
 .editor-actions { display: flex; justify-content: space-between; gap: 10px; }
 .delete-button { border: 1px solid #d8b5a4; border-radius: 7px; background: #fff7f2; color: #8e3f18; padding: 10px 13px; }
 
