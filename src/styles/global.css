@@ -125,6 +125,8 @@ select:focus, input:focus, textarea:focus { border-color: #b6a5e7; box-shadow: 0
 
 .list, .activity-feed { display: grid; gap: 8px; }
 .finance-row, .activity-row, .candidate-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--border-soft); border-radius: 7px; background: rgba(251,250,248,.86); padding: 10px 11px; }
+.finance-row { width: 100%; color: inherit; text-align: left; }
+.finance-row.selected, .finance-row:hover { border-color: #cfc7df; background: #fff; }
 .finance-row div { min-width: 0; }
 .finance-row strong { display: block; margin-bottom: 3px; }
 .finance-row span { display: block; overflow: hidden; color: #38332f; text-overflow: ellipsis; white-space: nowrap; }
@@ -142,6 +144,20 @@ select:focus, input:focus, textarea:focus { border-color: #b6a5e7; box-shadow: 0
 .wiki-note-card span, .wiki-actor { color: var(--muted); font-size: 12px; }
 .wiki-editor label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
 .wiki-editor textarea { min-height: 320px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+.right-stack { display: grid; gap: 14px; }
+.completed-row { display: grid; gap: 4px; width: 100%; border: 1px solid var(--border-soft); border-radius: 7px; background: #fbfaf8; color: var(--text); padding: 10px 11px; text-align: left; }
+.completed-row:hover { border-color: #b8d2bf; background: #f6fbf7; }
+.completed-row small, .mini-label { color: var(--muted); font-size: 12px; }
+.finance-analysis { display: grid; gap: 12px; }
+.trend-chart { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; min-height: 150px; align-items: end; }
+.trend-month { display: grid; gap: 6px; min-width: 0; text-align: center; }
+.trend-bars { display: flex; align-items: end; justify-content: center; gap: 4px; height: 118px; border: 1px solid var(--border-soft); border-radius: 7px; background: #fbfaf8; padding: 6px; }
+.trend-bars span { width: 14px; min-height: 4px; border-radius: 4px 4px 2px 2px; }
+.trend-bars .income { background: var(--green); }
+.trend-bars .expense { background: var(--orange); }
+.analysis-copy { margin: 0; color: #4b4742; line-height: 1.55; }
+.editor-actions { display: flex; justify-content: space-between; gap: 10px; }
+.delete-button { border: 1px solid #d8b5a4; border-radius: 7px; background: #fff7f2; color: #8e3f18; padding: 10px 13px; }
 
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

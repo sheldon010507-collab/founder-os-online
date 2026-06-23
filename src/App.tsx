@@ -198,6 +198,27 @@ export default function App() {
     if (error) setConnectionNote(`任务已本地更新，但 Supabase 保存失败：${error.message}`);
   }
 
+  async function saveFinanceEntry(next: Finance) {
+    setFinance(current => current.map(item => item.id === next.id ? next : item));
+    if (!supabase) return;
+    const { error } = await supabase
+      .from('finance_entries')
+      .update({ entry_type: next.type, amount: next.amount, category: next.category, note: next.note, entry_date: next.entryDate, created_by: next.createdBy })
+      .eq('id', next.id);
+    if (error) setConnectionNote(`账目已本地更新，但 Supabase 保存失败：${error.message}`);
+  }
+
+  async function deleteFinanceEntry(id: string) {
+    const before = finance;
+    setFinance(current => current.filter(item => item.id !== id));
+    if (!supabase) return;
+    const { error } = await supabase.from('finance_entries').delete().eq('id', id);
+    if (error) {
+      setFinance(before);
+      setConnectionNote(`账目删除失败：${error.message}`);
+    }
+  }
+
   async function moveWorkItem(draggedId: string, targetId: string, position: DropPosition) {
     if (draggedId === targetId) return;
     const result = reorderWorkItems(work, draggedId, targetId, position);
@@ -312,7 +333,7 @@ export default function App() {
         </header>
 
         {view === 'capture' && <CaptureHome actor={actor} messages={messages} onSubmit={handleCapture} />}
-        {view === 'board' && <Board finance={finance} work={work} activities={activities} onSaveWorkItem={saveWorkItem} onMoveWorkItem={moveWorkItem} />}
+        {view === 'board' && <Board finance={finance} work={work} activities={activities} onSaveWorkItem={saveWorkItem} onMoveWorkItem={moveWorkItem} onSaveFinance={saveFinanceEntry} onDeleteFinance={deleteFinanceEntry} />}
         {view === 'learning' && <Learning actor={actor} notes={wikiNotes} candidates={candidates} connectionNote={connectionNote} onSaveNote={saveWikiNote} />}
         {view === 'settings' && <SettingsPage connectionNote={connectionNote} onLock={() => { localStorage.removeItem('founder-app-passcode'); setUnlocked(false); setAppPassword(''); }} />}
       </main>
@@ -421,14 +442,20 @@ function ChatBubble({ message }: { message: CaptureMessage }) {
   );
 }
 
-function Board({ finance, work, activities, onSaveWorkItem, onMoveWorkItem }: { finance: Finance[]; work: Work[]; activities: Activity[]; onSaveWorkItem: (item: Work) => Promise<void>; onMoveWorkItem: (draggedId: string, targetId: string, position: DropPosition) => Promise<void> }) {
+function Board({ finance, work, activities, onSaveWorkItem, onMoveWorkItem, onSaveFinance, onDeleteFinance }: { finance: Finance[]; work: Work[]; activities: Activity[]; onSaveWorkItem: (item: Work) => Promise<void>; onMoveWorkItem: (draggedId: string, targetId: string, position: DropPosition) => Promise<void>; onSaveFinance: (entry: Finance) => Promise<void>; onDeleteFinance: (id: string) => Promise<void> }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedFinanceId, setSelectedFinanceId] = useState<string | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
   const income = finance.filter(item => item.type === 'income').reduce((sum, item) => sum + item.amount, 0);
   const expense = finance.filter(item => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0);
   const tree = useMemo(() => buildTree(work), [work]);
+  const activeTree = useMemo(() => tree.filter(node => node.progress < 100), [tree]);
+  const completedTasks = useMemo(() => flattenCompletedNodes(tree), [tree]);
+  const financeTrend = useMemo(() => buildFinanceTrend(finance), [finance]);
+  const financeAnalysis = useMemo(() => analyzeFinance(finance), [finance]);
   const selected = selectedId ? work.find(item => item.id === selectedId) : undefined;
+  const selectedFinance = selectedFinanceId ? finance.find(item => item.id === selectedFinanceId) : undefined;
 
   async function handleMove(dragged: string, target: DropTarget) {
     setDraggedId(null);
@@ -446,8 +473,8 @@ function Board({ finance, work, activities, onSaveWorkItem, onMoveWorkItem }: { 
       <section className="panel task-panel">
         <div className="panel-title"><h2>任务树进度</h2><GitBranch size={17} /></div>
         <div className="work-tree">
-          {tree.length === 0 && <p className="empty">还没有任务。</p>}
-          {tree.map(node => (
+          {activeTree.length === 0 && <p className="empty">没有进行中的任务。完成项会归到右侧。</p>}
+          {activeTree.map(node => (
             <WorkNode
               key={node.item.id}
               node={node}
@@ -463,14 +490,34 @@ function Board({ finance, work, activities, onSaveWorkItem, onMoveWorkItem }: { 
           ))}
         </div>
       </section>
-      <TaskEditor item={selected} onClose={() => setSelectedId(null)} onSave={onSaveWorkItem} />
+      <section className="right-stack">
+        {selected
+          ? <TaskEditor item={selected} onClose={() => setSelectedId(null)} onSave={onSaveWorkItem} />
+          : <CompletedTasks tasks={completedTasks} onSelect={setSelectedId} />}
+      </section>
+      <section className="panel finance-analysis">
+        <div className="panel-title"><h2>财务走势</h2><span className="mini-label">最近 6 个月</span></div>
+        <div className="trend-chart">
+          {financeTrend.map(month => (
+            <div className="trend-month" key={month.key}>
+              <div className="trend-bars">
+                <span className="income" style={{ height: `${month.incomeHeight}%` }} />
+                <span className="expense" style={{ height: `${month.expenseHeight}%` }} />
+              </div>
+              <small>{month.label}</small>
+            </div>
+          ))}
+        </div>
+        <p className="analysis-copy">{financeAnalysis}</p>
+      </section>
       <section className="panel">
         <h2>最近账目</h2>
         <div className="list finance-list">
           {finance.length === 0 && <p className="empty">还没有从 Supabase 读到正式账目。</p>}
-          {finance.slice(0, 6).map(item => <FinanceRow key={item.id} entry={item} />)}
+          {finance.slice(0, 6).map(item => <FinanceRow key={item.id} entry={item} selected={selectedFinanceId === item.id} onSelect={setSelectedFinanceId} />)}
         </div>
       </section>
+      <FinanceEditor entry={selectedFinance} onClose={() => setSelectedFinanceId(null)} onSave={onSaveFinance} onDelete={onDeleteFinance} />
       <section className="panel">
         <h2>最近动态</h2>
         <div className="activity-feed compact">
@@ -594,9 +641,65 @@ function TaskEditor({ item, onClose, onSave }: { item?: Work; onClose: () => voi
   );
 }
 
-function FinanceRow({ entry }: { entry: Finance }) {
+function FinanceRow({ entry, selected, onSelect }: { entry: Finance; selected: boolean; onSelect: (id: string) => void }) {
   const sign = entry.type === 'income' ? '+' : '-';
-  return <div className="finance-row"><div><strong>{sign}£{entry.amount}</strong><span>{entry.note || categoryLabel[entry.category]}</span></div><small>{categoryLabel[entry.category]} · {entry.entryDate}</small></div>;
+  return <button type="button" className={selected ? 'finance-row selected' : 'finance-row'} onClick={() => onSelect(entry.id)}><div><strong>{sign}£{entry.amount}</strong><span>{entry.note || categoryLabel[entry.category]}</span></div><small>{categoryLabel[entry.category]} · {entry.entryDate}</small></button>;
+}
+
+function FinanceEditor({ entry, onClose, onSave, onDelete }: { entry?: Finance; onClose: () => void; onSave: (entry: Finance) => Promise<void>; onDelete: (id: string) => Promise<void> }) {
+  const [draft, setDraft] = useState<Finance | undefined>(entry);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => setDraft(entry), [entry]);
+  if (!draft) return <aside className="task-editor empty-editor"><Pencil size={18} /><strong>点开一条账目</strong><p>可以改金额、分类、备注和日期。输错的记录也可以删除。</p></aside>;
+
+  async function save() {
+    if (!draft || saving) return;
+    setSaving(true);
+    await onSave(draft);
+    setSaving(false);
+  }
+
+  async function remove() {
+    if (!draft || saving) return;
+    setSaving(true);
+    await onDelete(draft.id);
+    setSaving(false);
+    onClose();
+  }
+
+  return (
+    <aside className="task-editor finance-editor">
+      <div className="editor-head"><strong>账目详情</strong><button type="button" onClick={onClose}><X size={16} /></button></div>
+      <div className="editor-grid">
+        <label>类型<select value={draft.type} onChange={event => setDraft({ ...draft, type: event.target.value as Finance['type'] })}><option value="expense">支出</option><option value="income">收入</option></select></label>
+        <label>金额<input type="number" min="0" step="0.01" value={draft.amount} onChange={event => setDraft({ ...draft, amount: Number(event.target.value) })} /></label>
+      </div>
+      <label>分类<select value={draft.category} onChange={event => setDraft({ ...draft, category: event.target.value as Category })}>{Object.entries(categoryLabel).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      <label>日期<input type="date" value={draft.entryDate} onChange={event => setDraft({ ...draft, entryDate: event.target.value })} /></label>
+      <label>备注<textarea value={draft.note} onChange={event => setDraft({ ...draft, note: event.target.value })} /></label>
+      <div className="editor-actions">
+        <button className="delete-button" type="button" onClick={remove} disabled={saving}>删除</button>
+        <button className="save-button" type="button" onClick={save} disabled={saving}>{saving ? <Loader2 className="spin" size={16} /> : <Save size={16} />}保存</button>
+      </div>
+    </aside>
+  );
+}
+
+function CompletedTasks({ tasks, onSelect }: { tasks: Work[]; onSelect: (id: string) => void }) {
+  return (
+    <section className="panel completed-panel">
+      <h2>已完成任务</h2>
+      <div className="list">
+        {tasks.length === 0 && <p className="empty">完成 100% 的任务会自动归到这里。</p>}
+        {tasks.slice(0, 12).map(item => (
+          <button className="completed-row" key={item.id} type="button" onClick={() => onSelect(item.id)}>
+            <span>{item.title}</span>
+            <small>{actorName(item.createdBy)} · {new Date(item.createdAt).toLocaleDateString()}</small>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function Learning({ actor, notes, candidates, connectionNote, onSaveNote }: { actor: Person; notes: WikiNote[]; candidates: Candidate[]; connectionNote: string; onSaveNote: (note: Partial<WikiNote> & { title: string; body: string; category: string }) => Promise<void> }) {
@@ -777,6 +880,53 @@ function inferProjectPrefix(title: string) {
   if (!firstToken || firstToken.length < 3) return undefined;
   if (/^(task|todo|idea|step)$/i.test(firstToken)) return undefined;
   return firstToken;
+}
+
+function flattenCompletedNodes(nodes: Node[]): Work[] {
+  const done: Work[] = [];
+  const visit = (node: Node) => {
+    if (!node.inferred && node.progress >= 100) done.push(node.item);
+    node.children.forEach(visit);
+  };
+  nodes.forEach(visit);
+  return done.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+function buildFinanceTrend(finance: Finance[]) {
+  const now = new Date();
+  const months = Array.from({ length: 6 }, (_, index) => {
+    const date = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    return { key, label: `${date.getMonth() + 1}月`, income: 0, expense: 0 };
+  });
+  for (const entry of finance) {
+    const key = entry.entryDate.slice(0, 7);
+    const month = months.find(item => item.key === key);
+    if (!month) continue;
+    if (entry.type === 'income') month.income += entry.amount;
+    else month.expense += entry.amount;
+  }
+  const max = Math.max(1, ...months.flatMap(item => [item.income, item.expense]));
+  return months.map(item => ({
+    ...item,
+    incomeHeight: Math.max(4, Math.round((item.income / max) * 100)),
+    expenseHeight: Math.max(4, Math.round((item.expense / max) * 100)),
+  }));
+}
+
+function analyzeFinance(finance: Finance[]) {
+  const recent = finance.filter(entry => entry.entryDate >= new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toISOString().slice(0, 10));
+  const expense = recent.filter(entry => entry.type === 'expense').reduce((sum, item) => sum + item.amount, 0);
+  const income = recent.filter(entry => entry.type === 'income').reduce((sum, item) => sum + item.amount, 0);
+  const byCategory = new Map<Category, number>();
+  for (const entry of recent.filter(item => item.type === 'expense')) {
+    byCategory.set(entry.category, (byCategory.get(entry.category) || 0) + entry.amount);
+  }
+  const top = Array.from(byCategory.entries()).sort((a, b) => b[1] - a[1])[0];
+  if (finance.length === 0) return '还没有足够数据做分析。';
+  if (!top) return `最近收入 £${income.toFixed(0)}，暂时没有支出记录。`;
+  const net = income - expense;
+  return `最近重点支出在「${categoryLabel[top[0]]}」£${top[1].toFixed(0)}；收入 £${income.toFixed(0)}，支出 £${expense.toFixed(0)}，净现金流 £${net.toFixed(0)}。`;
 }
 
 function getNote(item: Work) { return item.tags.find(tag => tag.startsWith('note:'))?.slice(5) || ''; }
