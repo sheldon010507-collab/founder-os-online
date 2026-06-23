@@ -279,7 +279,7 @@ export default function App() {
         </header>
 
         {view === 'capture' && <CaptureHome actor={actor} messages={messages} onSubmit={handleCapture} />}
-        {view === 'board' && <Board finance={finance} work={work} activities={activities} connectionNote={connectionNote} onSaveWorkItem={saveWorkItem} onMoveWorkItem={moveWorkItem} />}
+        {view === 'board' && <Board finance={finance} work={work} activities={activities} onSaveWorkItem={saveWorkItem} onMoveWorkItem={moveWorkItem} />}
         {view === 'learning' && <Learning candidates={candidates} connectionNote={connectionNote} />}
         {view === 'settings' && <SettingsPage connectionNote={connectionNote} onLock={() => { localStorage.removeItem('founder-app-passcode'); setUnlocked(false); setAppPassword(''); }} />}
       </main>
@@ -388,7 +388,7 @@ function ChatBubble({ message }: { message: CaptureMessage }) {
   );
 }
 
-function Board({ finance, work, activities, connectionNote, onSaveWorkItem, onMoveWorkItem }: { finance: Finance[]; work: Work[]; activities: Activity[]; connectionNote: string; onSaveWorkItem: (item: Work) => Promise<void>; onMoveWorkItem: (draggedId: string, targetId: string, position: DropPosition) => Promise<void> }) {
+function Board({ finance, work, activities, onSaveWorkItem, onMoveWorkItem }: { finance: Finance[]; work: Work[]; activities: Activity[]; onSaveWorkItem: (item: Work) => Promise<void>; onMoveWorkItem: (draggedId: string, targetId: string, position: DropPosition) => Promise<void> }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
@@ -405,10 +405,6 @@ function Board({ finance, work, activities, connectionNote, onSaveWorkItem, onMo
 
   return (
     <div className="dashboard-layout">
-      <section className="connection-banner">
-        <strong>数据来源</strong>
-        <span>{connectionNote}</span>
-      </section>
       <section className="metric-row">
         <Metric label="本月收入" value={`£${income.toFixed(0)}`} tone="good" />
         <Metric label="本月支出" value={`£${expense.toFixed(0)}`} tone="warn" />
@@ -574,11 +570,11 @@ function Learning({ candidates, connectionNote }: { candidates: Candidate[]; con
   return (
     <section className="learning-page">
       <Panel title="Wiki 现在怎么用">
-        <p className="empty">线上版 Wiki 先放在 Supabase：资料摘要、链接、文件记录和批准后的规则都可以在线查看。Obsidian 本地 vault 暂时不再作为线上写入目标。</p>
+        <p className="empty">线上版不能直接写你电脑里的 Obsidian vault。现在的 Wiki 会改成 Supabase 在线知识库：手机、电脑、Vercel 都读同一份 Markdown 资料；Obsidian 只作为本机备份或后续同步目标。</p>
         <div className="hint-list">
-          <span>适合进 Wiki：SOP、客户背景、长期规则、复盘、资料摘要。</span>
-          <span>适合进 Supabase 正式表：账目、任务、状态、动态、进度。</span>
-          <span>上传文件/图片时，系统会先记录 capture 和附件摘要。</span>
+          <span>适合进 Wiki：SOP、客户背景、长期规则、复盘、链接资料、文件/图片摘要。</span>
+          <span>适合进正式表：账目、任务、状态、动态、进度，这些用于统计和看板。</span>
+          <span>下一步建议：新增 `founder_wiki_notes` 表，让 Wiki 页面可以直接新建、编辑、搜索 Markdown。</span>
         </div>
       </Panel>
       <Panel title="候选 Skill">
