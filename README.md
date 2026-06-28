@@ -34,6 +34,14 @@ FOUNDER_APP_PASSWORD=
 
 Do not expose `FOUNDER_SUPABASE_SERVICE_ROLE_KEY`, `FOUNDER_NVIDIA_API_KEY`, OpenClaw secrets, Telegram tokens, or kitchen credentials in frontend variables.
 
+After adding or changing Vercel environment variables, redeploy the project so the serverless API and Vite build receive the new values.
+
+If another phone or account shows `共享密码不对，或者 Vercel 没配置 FOUNDER_APP_PASSWORD。`:
+
+1. Confirm `FOUNDER_APP_PASSWORD` exists in Vercel for the same environment that user is opening, usually Production.
+2. Confirm the password typed on that device exactly matches `FOUNDER_APP_PASSWORD`; spaces and different capitalization count as different passwords.
+3. Tap Settings -> clear local password, or reopen the app after the latest deploy. The app now clears a bad saved password automatically after a 401 response.
+
 ## Supabase Setup
 
 Run the SQL in:

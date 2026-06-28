@@ -51,6 +51,7 @@ select:focus, input:focus, textarea:focus { border-color: #b6a5e7; box-shadow: 0
 .password-card img { width: 48px; height: 48px; }
 .password-card h1 { margin: 0; font-size: 28px; }
 .password-card p { margin: 0; color: var(--muted); line-height: 1.5; }
+.password-card .form-error { border: 1px solid #e0b39c; border-radius: 7px; background: #fff6f0; color: #8b3d18; padding: 9px 10px; }
 
 .capture-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; align-items: start; }
 .chat-panel, .panel, .metric, .task-editor { border: 1px solid var(--border-soft); border-radius: 8px; background: rgba(255, 255, 255, .72); }

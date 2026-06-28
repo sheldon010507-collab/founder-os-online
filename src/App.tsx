@@ -101,6 +101,7 @@ export default function App() {
   const [appPassword, setAppPassword] = useState(() => localStorage.getItem('founder-app-passcode') || '');
   const [passwordDraft, setPasswordDraft] = useState('');
   const [unlocked, setUnlocked] = useState(() => Boolean(localStorage.getItem('founder-app-passcode')));
+  const [authError, setAuthError] = useState('');
   const [finance, setFinance] = useState<Finance[]>([]);
   const [work, setWork] = useState<Work[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -185,7 +186,16 @@ export default function App() {
     if (!passwordDraft.trim()) return;
     localStorage.setItem('founder-app-passcode', passwordDraft.trim());
     setAppPassword(passwordDraft.trim());
+    setAuthError('');
     setUnlocked(true);
+  }
+
+  function lockForPasswordRetry(message: string) {
+    localStorage.removeItem('founder-app-passcode');
+    setAppPassword('');
+    setPasswordDraft('');
+    setAuthError(message);
+    setUnlocked(false);
   }
 
   async function saveWorkItem(next: Work) {
@@ -261,7 +271,24 @@ export default function App() {
         body: JSON.stringify({ actor, text, attachments }),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || 'Capture failed');
+      if (response.status === 401) {
+        const fallbackReply = await clientSideCapture(text.trim(), attachments);
+        setMessages(current => [
+          ...current.map(item => item.id === userMessage.id ? { ...item, status: 'processed' as const } : item),
+          { id: crypto.randomUUID(), actor, role: 'assistant', text: `${fallbackReply}\n\n提示：Vercel API 密码校验没通过，我已改用浏览器直连 Supabase 写入。`, status: 'processed', createdAt: new Date().toISOString() },
+        ]);
+        await refreshData();
+        return;
+      }
+      if (!response.ok) {
+        const fallbackReply = await clientSideCapture(text.trim(), attachments);
+        setMessages(current => [
+          ...current.map(item => item.id === userMessage.id ? { ...item, status: 'processed' as const } : item),
+          { id: crypto.randomUUID(), actor, role: 'assistant', text: `${fallbackReply}\n\n提示：Vercel API 暂时不可用（${payload.error || response.status}），我已改用浏览器直连 Supabase 写入。`, status: 'processed', createdAt: new Date().toISOString() },
+        ]);
+        await refreshData();
+        return;
+      }
       const assistant: CaptureMessage = {
         id: crypto.randomUUID(),
         actor,
@@ -274,15 +301,87 @@ export default function App() {
       await refreshData();
     } catch (error) {
       const message = error instanceof Error ? error.message : '未知错误';
-      setMessages(current => [
-        ...current.map(item => item.id === userMessage.id ? { ...item, status: 'failed' as const } : item),
-        { id: crypto.randomUUID(), actor, role: 'assistant', text: `没写入：${message}`, status: 'failed', createdAt: new Date().toISOString() },
-      ]);
+      try {
+        const fallbackReply = await clientSideCapture(text.trim(), attachments);
+        setMessages(current => [
+          ...current.map(item => item.id === userMessage.id ? { ...item, status: 'processed' as const } : item),
+          { id: crypto.randomUUID(), actor, role: 'assistant', text: `${fallbackReply}\n\n提示：Vercel API 请求失败（${message}），我已改用浏览器直连 Supabase 写入。`, status: 'processed', createdAt: new Date().toISOString() },
+        ]);
+        await refreshData();
+        return;
+      } catch (fallbackError) {
+        const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : message;
+        setMessages(current => [
+          ...current.map(item => item.id === userMessage.id ? { ...item, status: 'failed' as const } : item),
+          { id: crypto.randomUUID(), actor, role: 'assistant', text: `没写入：${fallbackMessage}`, status: 'failed', createdAt: new Date().toISOString() },
+        ]);
+        return;
+      }
     }
   }
 
+  async function clientSideCapture(text: string, attachments: CaptureAttachment[]) {
+    if (!supabase) return '没写入：Supabase 没连接。';
+    if (attachments.length > 0 && !text) return '收到附件，但浏览器兜底模式暂时只处理文字；请补一句它是什么。';
+    const parsed = parseClientIntent(text, actor);
+
+    if (parsed.kind === 'finance') {
+      const { error } = await supabase.from('finance_entries').insert({ entry_type: parsed.entryType, amount: parsed.amount, currency: 'GBP', category: parsed.category, note: text, entry_date: new Date().toISOString().slice(0, 10), created_by: actor });
+      if (error) throw new Error(error.message);
+      await supabase.from('activity_log').insert({ actor, action_type: `finance.${parsed.entryType}`, summary: `记录${parsed.entryType === 'income' ? '收入' : '支出'} £${parsed.amount}：${text}` });
+      return `已记录${parsed.entryType === 'income' ? '收入' : '支出'} £${parsed.amount}，分类为${categoryLabel[parsed.category]}。`;
+    }
+
+    if (parsed.kind === 'task-with-child') {
+      const parent = await findOrCreateClientTask(parsed.parentTitle, null);
+      const child = await createClientTask(parsed.childTitle, parent.id);
+      await supabase.from('activity_log').insert({ actor, action_type: 'work.child', summary: `给 ${parent.title} 新增子任务：${child.title}` });
+      return `已创建任务「${parent.title}」，并添加子任务「${child.title}」。`;
+    }
+
+    if (parsed.kind === 'child-task') {
+      const parent = await findOrCreateClientTask(parsed.parentTitle, null);
+      const child = await createClientTask(parsed.childTitle, parent.id);
+      await supabase.from('activity_log').insert({ actor, action_type: 'work.child', summary: `给 ${parent.title} 新增子任务：${child.title}` });
+      return `已给 ${parent.title} 加子任务：${child.title}`;
+    }
+
+    if (parsed.kind === 'task' || parsed.kind === 'idea') {
+      const item = await createClientTask(parsed.title, null, parsed.kind === 'idea' ? 'idea' : 'task');
+      await supabase.from('activity_log').insert({ actor, action_type: `work.${item.item_type}`, summary: `新增${item.item_type === 'task' ? '任务' : '想法'}：${item.title}` });
+      return `已创建${item.item_type === 'task' ? '任务' : '想法'}：${item.title}`;
+    }
+
+    const item = await createClientTask(text, null, 'idea');
+    await supabase.from('activity_log').insert({ actor, action_type: 'work.idea', summary: `记录想法：${item.title}` });
+    return `已记录“${text}”这一想法。`;
+  }
+
+  async function findOrCreateClientTask(title: string, parentId: string | null) {
+    const { data } = await supabase!.from('work_items').select('id,title').ilike('title', title).limit(1);
+    if (data?.[0]) return data[0];
+    return createClientTask(title, parentId);
+  }
+
+  async function createClientTask(title: string, parentId: string | null, itemType: 'task' | 'idea' = 'task') {
+    const sortOrder = await nextClientSortOrder(parentId);
+    const { data, error } = await supabase!
+      .from('work_items')
+      .insert({ item_type: itemType, title, parent_id: parentId, priority: 'medium', status: 'todo', tags: [], sort_order: sortOrder, created_by: actor })
+      .select('id,title,item_type')
+      .single();
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async function nextClientSortOrder(parentId: string | null) {
+    const query = supabase!.from('work_items').select('sort_order').order('sort_order', { ascending: false }).limit(1);
+    const { data } = parentId ? await query.eq('parent_id', parentId) : await query.is('parent_id', null);
+    return Number(data?.[0]?.sort_order || 0) + 1;
+  }
+
   if (!unlocked) {
-    return <PasswordGate passwordDraft={passwordDraft} setPasswordDraft={setPasswordDraft} onSubmit={unlock} />;
+    return <PasswordGate passwordDraft={passwordDraft} setPasswordDraft={setPasswordDraft} error={authError} onSubmit={unlock} />;
   }
 
   const ActiveIcon = active.icon;
@@ -341,7 +440,7 @@ export default function App() {
   );
 }
 
-function PasswordGate({ passwordDraft, setPasswordDraft, onSubmit }: { passwordDraft: string; setPasswordDraft: (value: string) => void; onSubmit: (event: FormEvent) => void }) {
+function PasswordGate({ passwordDraft, setPasswordDraft, error, onSubmit }: { passwordDraft: string; setPasswordDraft: (value: string) => void; error: string; onSubmit: (event: FormEvent) => void }) {
   return (
     <main className="password-gate">
       <form className="password-card" onSubmit={onSubmit}>
@@ -349,6 +448,7 @@ function PasswordGate({ passwordDraft, setPasswordDraft, onSubmit }: { passwordD
         <p className="workspace-path">Founder OS Online</p>
         <h1>私人工作台</h1>
         <p>输入共享密码后进入。密码只保存在这台设备，并会随 Capture 请求发给 Vercel API 校验。</p>
+        {error && <p className="form-error">{error}</p>}
         <input type="password" value={passwordDraft} onChange={event => setPasswordDraft(event.target.value)} placeholder="共享密码" autoFocus />
         <button className="save-button" type="submit">进入</button>
       </form>
@@ -965,6 +1065,52 @@ function analyzeFinance(finance: Finance[]) {
     ? '建议下一个动作是补一条收入计划或客户回款任务，把现金流拉回正数。'
     : '现金流目前为正，可以继续推进高优先级项目，但仍建议检查订阅类工具是否重复。';
   return `AI ${stamp}：最近重点支出在「${categoryLabel[top[0]]}」£${top[1].toFixed(0)}；收入 £${income.toFixed(0)}，支出 £${expense.toFixed(0)}，净现金流 £${net.toFixed(0)}。${advice}`;
+}
+
+function parseClientIntent(text: string, actor: Person):
+  | { kind: 'finance'; entryType: 'income' | 'expense'; amount: number; category: Category }
+  | { kind: 'task'; title: string }
+  | { kind: 'idea'; title: string }
+  | { kind: 'child-task'; parentTitle: string; childTitle: string }
+  | { kind: 'task-with-child'; parentTitle: string; childTitle: string }
+  | { kind: 'unknown' } {
+  const trimmed = text.trim();
+  const lower = trimmed.toLowerCase();
+  const amountMatch = trimmed.match(/(?:£|gbp|pounds?|镑)?\s*(\d+(?:\.\d+)?)/i);
+  const amount = amountMatch ? Number(amountMatch[1]) : 0;
+  const isIncome = /收到|收入|付款|预付|paid me|received/i.test(trimmed);
+  const isExpense = /花了|买|支出|spent|paid for|bought/i.test(trimmed);
+  if (amount && (isIncome || isExpense)) return { kind: 'finance', entryType: isIncome ? 'income' : 'expense', amount, category: classifyClientCategory(trimmed) };
+
+  const taskWithChild = trimmed.match(/^(?:新\s*)?task\s*[:：]\s*(.+?)\s+(?:子\s*)?task\s*[:：]\s*(.+)$/i)
+    || trimmed.match(/^新任务\s*[:：]\s*(.+?)\s+子任务\s*[:：]\s*(.+)$/i);
+  if (taskWithChild) return { kind: 'task-with-child', parentTitle: taskWithChild[1].trim(), childTitle: taskWithChild[2].trim() };
+
+  const child = trimmed.match(/^给\s*(.+?)\s*加子任务\s*[:：]?\s*(.+)$/)
+    || trimmed.match(/^(.+?)\s+子任务\s*[:：]\s*(.+)$/)
+    || trimmed.match(/^add subtask to\s+(.+?)[:：]?\s*(.+)$/i);
+  if (child) return { kind: 'child-task', parentTitle: child[1].trim(), childTitle: child[2].trim() };
+
+  if (/^任务[:：]/.test(trimmed) || /^新任务[:：]/.test(trimmed) || lower.startsWith('task:') || lower.startsWith('new task:')) {
+    return { kind: 'task', title: trimmed.replace(/^新?任务[:：]\s*|^(new\s*)?task:\s*/i, '').trim() };
+  }
+  if (/^想法[:：]/.test(trimmed) || lower.startsWith('idea:')) {
+    return { kind: 'idea', title: trimmed.replace(/^想法[:：]\s*|^idea:\s*/i, '').trim() };
+  }
+  return { kind: 'unknown' };
+}
+
+function classifyClientCategory(text: string): Category {
+  const normalized = text.toLowerCase();
+  const rules: Array<{ category: Category; keywords: string[] }> = [
+    { category: 'tools', keywords: ['域名', '服务器', '软件', '订阅', '工具', 'tool', 'tools', 'domain', 'hosting', 'server', 'saas'] },
+    { category: 'marketing', keywords: ['广告', '投放', '海报', '营销', '推广', 'marketing', 'ads', 'poster', 'promo'] },
+    { category: 'salary', keywords: ['工资', '薪水', 'salary', 'payroll'] },
+    { category: 'client_payment', keywords: ['客户', '预付', '定金', '尾款', 'client', 'deposit', 'invoice', 'prepaid', 'prepayment'] },
+    { category: 'procurement', keywords: ['采购', '进货', '供应商', 'purchase', 'supplier'] },
+    { category: 'travel', keywords: ['差旅', '火车', '机票', '酒店', 'travel', 'train', 'flight', 'hotel'] },
+  ];
+  return rules.find(rule => rule.keywords.some(keyword => normalized.includes(keyword.toLowerCase())))?.category || 'other';
 }
 
 function getNote(item: Work) { return item.tags.find(tag => tag.startsWith('note:'))?.slice(5) || ''; }
