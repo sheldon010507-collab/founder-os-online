@@ -555,10 +555,9 @@ function Board({ finance, work, activities, onSaveWorkItem, onMoveWorkItem, onSa
   const tree = useMemo(() => buildTree(work), [work]);
   const activeTree = useMemo(() => tree.filter(node => node.progress < 100), [tree]);
   const completedTasks = useMemo(() => flattenCompletedNodes(tree), [tree]);
-  const latestActiveWork = useMemo(() => work
-    .filter(item => item.status !== 'done')
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .slice(0, 4), [work]);
+  const latestActiveNodes = useMemo(() => flattenActiveNodes(tree)
+    .sort((a, b) => b.item.createdAt.localeCompare(a.item.createdAt))
+    .slice(0, 4), [tree]);
   const financeTrend = useMemo(() => buildFinanceTrend(finance), [finance]);
   const selected = selectedId ? work.find(item => item.id === selectedId) : undefined;
   const selectedFinance = selectedFinanceId ? finance.find(item => item.id === selectedFinanceId) : undefined;
@@ -584,13 +583,21 @@ function Board({ finance, work, activities, onSaveWorkItem, onMoveWorkItem, onSa
       </section>
       <section className="panel task-panel">
         <div className="panel-title"><h2>任务树进度</h2><GitBranch size={17} /></div>
-        {latestActiveWork.length > 0 && (
+        {latestActiveNodes.length > 0 && (
           <div className="latest-work-list" aria-label="最新新增任务">
-            {latestActiveWork.map(item => (
-              <button key={item.id} className="latest-work-row" type="button" onClick={() => setSelectedId(item.id)}>
-                <span>{item.title}</span>
-                <small>{statusLabel[item.status]} · {item.itemType === 'task' ? '任务' : '想法'}</small>
-              </button>
+            {latestActiveNodes.map(node => (
+              <WorkNode
+                key={`latest-${node.item.id}`}
+                node={node}
+                depth={0}
+                selectedId={selectedId}
+                draggedId={draggedId}
+                dropTarget={dropTarget}
+                onSelect={setSelectedId}
+                onDragStart={setDraggedId}
+                onDropTarget={setDropTarget}
+                onMove={handleMove}
+              />
             ))}
           </div>
         )}
@@ -1038,6 +1045,16 @@ function flattenCompletedNodes(nodes: Node[]): Work[] {
   };
   nodes.forEach(visit);
   return done.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+function flattenActiveNodes(nodes: Node[]): Node[] {
+  const active: Node[] = [];
+  const visit = (node: Node) => {
+    if (!node.inferred && node.progress < 100) active.push(node);
+    node.children.forEach(visit);
+  };
+  nodes.forEach(visit);
+  return active;
 }
 
 function buildFinanceTrend(finance: Finance[]) {
