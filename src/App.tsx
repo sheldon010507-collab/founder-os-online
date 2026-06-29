@@ -555,6 +555,10 @@ function Board({ finance, work, activities, onSaveWorkItem, onMoveWorkItem, onSa
   const tree = useMemo(() => buildTree(work), [work]);
   const activeTree = useMemo(() => tree.filter(node => node.progress < 100), [tree]);
   const completedTasks = useMemo(() => flattenCompletedNodes(tree), [tree]);
+  const latestActiveWork = useMemo(() => work
+    .filter(item => item.status !== 'done')
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 4), [work]);
   const financeTrend = useMemo(() => buildFinanceTrend(finance), [finance]);
   const selected = selectedId ? work.find(item => item.id === selectedId) : undefined;
   const selectedFinance = selectedFinanceId ? finance.find(item => item.id === selectedFinanceId) : undefined;
@@ -580,6 +584,16 @@ function Board({ finance, work, activities, onSaveWorkItem, onMoveWorkItem, onSa
       </section>
       <section className="panel task-panel">
         <div className="panel-title"><h2>任务树进度</h2><GitBranch size={17} /></div>
+        {latestActiveWork.length > 0 && (
+          <div className="latest-work-list" aria-label="最新新增任务">
+            {latestActiveWork.map(item => (
+              <button key={item.id} className="latest-work-row" type="button" onClick={() => setSelectedId(item.id)}>
+                <span>{item.title}</span>
+                <small>{statusLabel[item.status]} · {item.itemType === 'task' ? '任务' : '想法'}</small>
+              </button>
+            ))}
+          </div>
+        )}
         <div className="work-tree">
           {activeTree.length === 0 && <p className="empty">没有进行中的任务。完成项会归到右侧。</p>}
           {activeTree.map(node => (
